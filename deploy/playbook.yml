@@ -1,0 +1,10 @@
+---
+- hosts: all
+  remote_user: root
+  become: yes
+  gather_facts: no
+  roles:
+    - role: laiwan
+      when: use_role == "laiwan"
+    - role: game-master
+      when: use_role == "game_master"

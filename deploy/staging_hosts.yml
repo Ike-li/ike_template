@@ -1,0 +1,40 @@
+all:
+  hosts:
+    k8s.staging.shafayouxi.org:
+      ansible_host: k8s.staging.shafayouxi.org
+#      ansible_ssh_private_key_file: /home/ansible/.ssh/id_rsa
+      use_role: laiwan
+      k8s_namespace: qipai-staging
+      stage: staging
+      project: flask_template
+      project_dns_name: flask-template
+      docker_registry: registry-vpc.cn-hongkong.aliyuncs.com
+      docker_pull_secret: docker-registry-vpc-hk-laiwanio
+      kong_routes:
+        - {"route": "/v1/example", "type": "api", "plugins": ["oauth2", "cors"]}
+        - {"route": "/service/v1/example", "type": "service"}
+        - {"route": "/admin/example", "type": "admin", "plugins": ["oauth2", "cors", "acl"]}
+      server:
+        replicas: 2
+        requests:
+          cpu: 1m
+          memory: 100Mi
+        limits:
+          cpu: 1000m
+          memory: 400Mi
+
+      # 中间件配置
+      config:
+        cassandra_nodes: ["qipai-staging-cassandra.qipai-staging-cassandra.svc.cluster.local"]
+        cassandra_replication_factor: 3
+        cassandra_password: cassandra
+        kafka_server: qipai-staging-kafka.qipai-staging-kafka.svc.cluster.local:9092
+        redis_startup_nodes: [{"host": "redis-cluster.qipai-staging-redis", "port": 6379}]
+        centrifugo_url: http://qipai-staging-centrifugo-v2-centrifugo.qipai-staging-centrifugo-v2.svc.cluster.local:8000
+        centrifugo_api_key: eb152ac0-caf8-4a10-8717-310cb0c0cd1e
+        kong_url: http://qipai-staging-kong-kong-admin.qipai-staging-kong.svc.cluster.local
+        jaeger_agent_host: jaeger-agent.opentracing-staging.svc.cluster.local
+        flask_env: staging
+        sentry_environment: staging
+        sentry_dsn: https://ef720ecc05ac458dba7bbced377bc274:9aa2a56472dc49ffa904766d7a064421@sentry.appcookies.com/123
+      sync_cassandra: True

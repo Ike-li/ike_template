@@ -1,0 +1,11 @@
+pipeline:
+
+  lint:
+    image: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:latest
+    commands:
+    - cd src
+    - ls -al
+    - poetry config virtualenvs.create false
+    - poetry install || poetry install || poetry install
+    - yapf -dr . | (! grep '.')
+    - isort . --check-only --diff
