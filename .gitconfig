@@ -1,0 +1,14 @@
+[user]
+	email = sinyercy@163.com
+	name = Ike-li
+
+[core]
+    excludesfile = /Users/ikeli/.gitignore_global
+
+[http]
+    proxy = socks5://127.0.0.1:1080
+[https]
+    proxy = socks5://127.0.0.1:1080
+
+[alias]
+	lg = log --color --graph --pretty=format:'%Cred%h%Creset -%C(yellow)%d%Creset %s %Cgreen(%cr) %C(bold blue)<%an>%Creset' --abbrev-commit
