@@ -1,0 +1,258 @@
+pipeline:
+
+  cassandra:
+    image: cassandra:3.11
+    environment:
+      MAX_HEAP_SIZE: 2048M
+      HEAP_NEWSIZE: 2048M
+    detach: true
+    command:
+    # 更改跑 CI 时, cassandra 的各种超时设置，避免跑测试时，经常遇到超时异常
+    - /bin/bash
+    - -c
+    - |
+      sed -i 's/read_request_timeout_in_ms: 5000/read_request_timeout_in_ms: 50001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/range_request_timeout_in_ms: 10000/range_request_timeout_in_ms: 100001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/write_request_timeout_in_ms: 2000/write_request_timeout_in_ms: 20001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/counter_write_request_timeout_in_ms: 5000/counter_write_request_timeout_in_ms: 50001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/cas_contention_timeout_in_ms: 1000/cas_contention_timeout_in_ms: 10001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/truncate_request_timeout_in_ms: 6000/truncate_request_timeout_in_ms: 60001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/request_timeout_in_ms: 10000/request_timeout_in_ms: 100001/' /etc/cassandra/cassandra.yaml;
+      sed -i 's/slow_query_log_timeout_in_ms: 500/slow_query_log_timeout_in_ms: 5001/' /etc/cassandra/cassandra.yaml;
+      /docker-entrypoint.sh;
+    when:
+      event: push
+
+  redis_cluster:
+    image: grokzen/redis-cluster:5.0.0
+    detach: true
+    ports: [ 7000, 7001, 7002, 7003, 7004, 7005 ]
+    when:
+      event: push
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:5.0.0-2
+    detach: true
+    ports: [ 2181 ]
+    environment:
+      ZOOKEEPER_CLIENT_PORT: '2181'
+      ZOOKEEPER_TICK_TIME: '2000'
+    when:
+      event: push
+
+  kafka:
+    image: confluentinc/cp-kafka:5.0.0-2
+    detach: true
+    ports: [ 9092 ]
+    environment:
+      KAFKA_BROKER_ID: '1'
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1'
+    when:
+      event: push
+
+  centrifugo:
+    image: centrifugo/centrifugo:v2.5.1
+    detach: true
+    environment:
+      CENTRIFUGO_SECRET: mytestsecret
+      CENTRIFUGO_API_KEY: 2f281382-c858-4020-bf03-f469ab7512bc
+    when:
+      event: push
+
+  jaeger:
+    image: jaegertracing/all-in-one
+    restart: always
+    detach: true
+    ports: [ 16686 ]
+    when:
+      event: push
+
+  build_docker_image:
+    image: plugins/docker
+    secrets:
+    - source: aliyun_docker_username
+      target: docker_username
+    - source: aliyun_docker_password
+      target: docker_password
+    registry: registry.cn-hongkong.aliyuncs.com
+    repo: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template
+    cache_from: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:latest
+    tags:
+    - ${DRONE_COMMIT_SHA}
+    - latest
+    when:
+      event: push
+
+  unittest:
+    image: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:${DRONE_COMMIT_SHA}
+    environment:
+      STAGE: testing
+    commands:
+    - cd /opt/app
+    - poetry install
+    - coverage run --source=. -m pytest
+    - coverage report -m --fail-under 100 --omit=extensions/*,migrations/*,sdk/*,base_engine/*,configs.py,update_i18n.py,manage.py,*conftest.py,*docs.py,*centrifugo_client.py
+    - cp -rv /opt/docs /drone/src/docs
+    when:
+      event: push
+
+  build_docker_image_by_tag:
+    image: plugins/docker
+    secrets:
+    - source: aliyun_docker_username
+      target: docker_username
+    - source: aliyun_docker_password
+      target: docker_password
+    registry: registry.cn-hongkong.aliyuncs.com
+    repo: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template
+    cache_from: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:latest
+    tags:
+    - ${DRONE_TAG##v}
+    when:
+      event: tag
+
+  deploy_staging_by_push_master:
+    image: plugins/ansible
+    environment:
+      ANSIBLE_JINJA2_EXTENSIONS: jinja2.ext.loopcontrols
+    secrets:
+    - source: aliyun_k8s_ssh_key
+      target: ansible_private_key
+    playbook: deploy/playbook.yml
+    inventory: deploy/staging_hosts.yml
+    flush_cache: true
+    extra_vars: docker_tag=${DRONE_COMMIT_SHA}
+    when:
+      event: push
+      branch: master
+
+  update_docs_by_push_master:
+    image: drillster/drone-rsync
+    secrets:
+    - source: dronedoc_key
+      target: rsync_key
+    hosts:
+    - c5.shafayouxi.org
+    user: dronedoc
+    source: /drone/src/docs/
+    target: ~/api_doc/flask_template_staging
+    script:
+    - ./api_doc/update_docs.sh
+    when:
+      event: push
+      branch: master
+
+  update_sdk_by_push_master:
+    image: drillster/drone-rsync
+    secrets:
+    - source: dronedoc_key
+      target: rsync_key
+    hosts:
+    - c5.shafayouxi.org
+    user: dronedoc
+    source: ./src/sdk/flask_template
+    target: ~/api_sdk/python
+    script:
+    - ./api_sdk/update_sdk.sh
+    when:
+      event: push
+      branch: master
+
+  telegram_staging_change_log:
+    image: appleboy/drone-telegram
+    token: 483423532:AAFwMDyTAJF1Mbzmm7PA-2LSK4w-9bwFh3I
+    to: -1001149803042
+    message: >
+      {{#success build.status}}
+        Staging部署 {{repo.name}} [{{ build.tag }}]: {{commit.message}} by {{ commit.author }}
+      {{/success}}
+    when:
+      event: push
+      branch: master
+
+  deploy_staging_by_tag:
+    image: plugins/ansible
+    environment:
+      ANSIBLE_JINJA2_EXTENSIONS: jinja2.ext.loopcontrols
+    secrets:
+    - source: aliyun_k8s_ssh_key
+      target: ansible_private_key
+    playbook: deploy/playbook.yml
+    inventory: deploy/staging_hosts.yml
+    flush_cache: true
+    extra_vars: docker_tag=${DRONE_TAG##v}
+    when:
+      event: tag
+
+  telegram_staging_change_log_by_tag:
+    image: appleboy/drone-telegram
+    token: 483423532:AAFwMDyTAJF1Mbzmm7PA-2LSK4w-9bwFh3I
+    to: -1001149803042
+    message: >
+      {{#success build.status}}
+        Staging部署 {{repo.name}} [{{ build.tag }}]: {{commit.message}} by {{ commit.author }}
+      {{/success}}
+    when:
+      event: tag
+
+  deploy_production_by_tag:
+    image: plugins/ansible
+    environment:
+      ANSIBLE_JINJA2_EXTENSIONS: jinja2.ext.loopcontrols
+    secrets:
+    - source: aliyun_k8s_ssh_key
+      target: ansible_private_key
+    playbook: deploy/playbook.yml
+    inventory: deploy/production_hosts.yml
+    flush_cache: true
+    extra_vars: docker_tag=${DRONE_TAG##v}
+    when:
+      event: tag
+      branch: master
+
+  mkdir_docs_by_tag_master:
+    image: alpine
+    commands:
+    - mkdir -p ./docs
+    when:
+      event: tag
+      branch: master
+
+  update_docs_by_tag_master:
+    image: drillster/drone-rsync
+    secrets:
+    - source: dronedoc_key
+      target: rsync_key
+    hosts:
+    - c5.shafayouxi.org
+    user: dronedoc
+    source: /drone/src/docs
+    target: ~/api_doc/flask_template_production
+    script:
+    - ./api_doc/build_production_docs.sh flask_template
+    - ./api_doc/update_docs.sh
+    when:
+      event: tag
+      branch: master
+
+  telegram_production_change_log:
+    image: appleboy/drone-telegram
+    token: 483423532:AAFwMDyTAJF1Mbzmm7PA-2LSK4w-9bwFh3I
+    to: -1001451355077
+    message: >
+      {{#success build.status}}
+        Production部署 {{repo.name}} [{{ build.tag }}]: {{commit.message}} by {{ commit.author }}
+      {{/success}}
+    when:
+      event: tag
+      branch: master
+
+  telegram_when_failure:
+    image: appleboy/drone-telegram
+    token: 483423532:AAFwMDyTAJF1Mbzmm7PA-2LSK4w-9bwFh3I
+    to: -1001188725759
+    when:
+      status:
+      - failure

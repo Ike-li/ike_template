@@ -1,0 +1,25 @@
+# 在 staging 上调试 ansible
+# 1. 将连接服务器的证书放到 ~/.ssh 下
+# 2. 在 staging_hosts.yaml 文件里，配置 ansible_ssh_private_key_file: /home/ansible/.ssh/xxxx
+# 然后在 docker-compose 环境下运行 ansible-playbook playbook.yml --extra-vars "docker_tag=v0.xx"
+
+version: '3'
+services:
+  ansible:
+    image: "cytopia/ansible:latest-tools"
+    network_mode: host
+    command: ["sleep", "999999999"]
+    volumes:
+      - ${HOME}/.ssh/:/home/ansible/.ssh/
+      - ./staging_hosts.yml:/etc/ansible/hosts
+      - ./laiwan:/data/laiwan
+      - ./game-master:/data/game-master
+      - ./playbook.yml:/data/playbook.yml
+    environment:
+      MY_UID: 1000
+      MY_GID: 1000
+      USER: ansible
+      ANSIBLE_HOST_KEY_CHECKING: flase
+      ANSIBLE_JINJA2_EXTENSIONS: jinja2.ext.loopcontrols
+      #ANSIBLE_STRATEGY_PLUGINS: /usr/lib/python3.6/site-packages/ansible_mitogen/plugins/strategy
+      #ANSIBLE_STRATEGY: mitogen_linear

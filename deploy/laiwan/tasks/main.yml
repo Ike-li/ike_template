@@ -1,0 +1,35 @@
+---
+- name: Make k8s dir
+  remote_user: root
+  become: yes
+  file: path=k8s_{{ stage }}/{{ project }} mode=0755 state=directory
+
+- name: upload install.sh
+  template:
+    src: install.sh.tpl
+    dest: k8s_{{ stage }}/{{ project }}/install.sh
+    mode: 0755
+
+- name: upload rollout.sh
+  template:
+    src: rollout.sh.tpl
+    dest: k8s_{{ stage }}/{{ project }}/rollout.sh
+    # 默认不带执行权限，避免误操作
+    mode: 0644
+
+- name: upload job.yaml
+  template:
+    src: job.yaml.tpl
+    dest: k8s_{{ stage }}/{{ project }}/job.yaml
+
+- name: upload deployment.yaml
+  template:
+    src: deployment.yaml.tpl
+    dest: k8s_{{ stage }}/{{ project }}/deployment.yaml
+
+- name: Run install.sh
+  shell: ./install.sh
+  args:
+    chdir: k8s_{{ stage }}/{{ project }}
+  register: install
+- debug: var=install.stdout_lines
