@@ -30,4 +30,3 @@ msgstr "没有权限"
 #: extensions/flask_api/exceptions.py:29
 msgid "Object not found"
 msgstr "没有找到该对象"
-
