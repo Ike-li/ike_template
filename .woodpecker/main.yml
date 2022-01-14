@@ -106,7 +106,7 @@ pipeline:
     - source: aliyun_docker_password
       target: docker_password
     registry: registry.cn-hongkong.aliyuncs.com
-    repo: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template
+    repo: https://github.com/Ike-li/ike_template.git
     cache_from: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:latest
     tags:
     - ${DRONE_TAG##v}
