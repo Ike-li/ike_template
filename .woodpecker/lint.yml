@@ -1,7 +1,7 @@
 pipeline:
 
   lint:
-    image: registry.cn-hongkong.aliyuncs.com/laiwanio/flask_template:latest
+    image: registry.cn-shenzhen.aliyuncs.com/ike_template/ike:v1
     commands:
     - cd src
     - ls -al
